@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.env
+
+# Local outputs
+_out/
+dist/
+build/
+
+# Proof receipts are usually run outputs (commit only if treating as golden vectors)
+proofs/receipts/*.jsonl
+
+# Scratch
+scripts/_scratch/
+scripts/_patch/
