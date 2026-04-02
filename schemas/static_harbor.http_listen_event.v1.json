@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "static_harbor.http_listen_event.v1",
+  "title": "StaticHarbor HTTP Listen Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proto",
+    "bind",
+    "port",
+    "peer",
+    "rx_len",
+    "tx_len"
+  ],
+  "properties": {
+    "schema": {
+      "const": "static_harbor.http_listen_event.v1"
+    },
+    "proto": {
+      "const": "tcp"
+    },
+    "bind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "peer": {
+      "type": "string",
+      "minLength": 3
+    },
+    "rx_len": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tx_len": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}
