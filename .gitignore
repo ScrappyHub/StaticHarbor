@@ -21,3 +21,5 @@ scripts/_patch/
 run_static_harbor.ps1
 scripts/run.ps1
 static_harbor_gui.py
+
+proofs/
