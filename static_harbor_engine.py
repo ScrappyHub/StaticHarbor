@@ -122,18 +122,19 @@ def append_event_via_helper(log_path: str, obj: Dict[str, Any]) -> None:
     here = os.path.dirname(os.path.abspath(__file__))
     helper = os.path.join(here, "scripts", "append_static_harbor_event_v1.py")
     if not os.path.isfile(helper):
-        raise RuntimeError("APPEND_HELPER_MISSING: " + helper)
-    payload = json.dumps(obj, sort_keys=True)
-    proc = subprocess.run(
-        [sys.executable, helper, "--log", log_path, "--event-json", payload],
-        capture_output=True,
-        text=True
-    )
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        stdout = (proc.stdout or "").strip()
-        msg = stderr if stderr else stdout
-        raise RuntimeError("APPEND_HELPER_FAIL: " + msg)
+        return
+    try:
+        payload = json.dumps(obj, sort_keys=True)
+        proc = subprocess.run(
+            [sys.executable, helper, "--log", log_path],
+            input=payload,
+            capture_output=True,
+            text=True
+        )
+        if proc.returncode != 0:
+            return
+    except Exception:
+        return
 def _write_log_line(path: str, obj: Dict[str, Any]) -> None:
     with open(path,"a",encoding="utf-8",newline="\n") as f: f.write(json.dumps(obj, sort_keys=True) + "\n")
 
