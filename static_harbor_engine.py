@@ -118,6 +118,22 @@ def cmd_scan(args: argparse.Namespace) -> int:
     jdump({"schema":"static_harbor.scan_result.v1","host":host,"timeout_ms":timeout_ms,"threads":worker_count,"open_ports":openp,"closed_ports":closedp,"elapsed_sec":round(elapsed,4),"scanned":len(ports)})
     return 0
 
+def append_event_via_helper(log_path: str, obj: Dict[str, Any]) -> None:
+    here = os.path.dirname(os.path.abspath(__file__))
+    helper = os.path.join(here, "scripts", "append_static_harbor_event_v1.py")
+    if not os.path.isfile(helper):
+        raise RuntimeError("APPEND_HELPER_MISSING: " + helper)
+    payload = json.dumps(obj, sort_keys=True)
+    proc = subprocess.run(
+        [sys.executable, helper, "--log", log_path, "--event-json", payload],
+        capture_output=True,
+        text=True
+    )
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        msg = stderr if stderr else stdout
+        raise RuntimeError("APPEND_HELPER_FAIL: " + msg)
 def _write_log_line(path: str, obj: Dict[str, Any]) -> None:
     with open(path,"a",encoding="utf-8",newline="\n") as f: f.write(json.dumps(obj, sort_keys=True) + "\n")
 
@@ -154,7 +170,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
                         try: conn.sendall(resp)
                         except Exception: pass
                     if log_path:
-                        _write_log_line(log_path, {"schema":"static_harbor.listen_event.v1","proto":"tcp","bind":bind_host,"port":int(tcp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
+                        append_event_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"tcp","bind":bind_host,"port":int(tcp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
                 finally:
                     try: conn.close()
                     except Exception: pass
@@ -176,7 +192,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
                     try: s.sendto(resp, addr)
                     except Exception: pass
                 if log_path:
-                    _write_log_line(log_path, {"schema":"static_harbor.listen_event.v1","proto":"udp","bind":bind_host,"port":int(udp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
+                    append_event_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"udp","bind":bind_host,"port":int(udp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
         except KeyboardInterrupt:
             print("LISTEN_STOP: udp"); return 0
         finally:
@@ -241,7 +257,7 @@ def cmd_http_listen(args: argparse.Namespace) -> int:
                     pass
 
                 if log_path:
-                    _write_log_line(log_path, {
+                    append_event_via_helper(log_path, {
                         "schema": "static_harbor.http_listen_event.v1",
                         "proto": "tcp",
                         "bind": bind_host,
