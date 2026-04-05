@@ -119,22 +119,28 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 def append_event_via_helper(log_path: str, obj: Dict[str, Any]) -> None:
+    log_path = os.path.abspath(log_path)
     here = os.path.dirname(os.path.abspath(__file__))
     helper = os.path.join(here, "scripts", "append_static_harbor_event_v1.py")
-    if not os.path.isfile(helper):
-        return
-    try:
-        payload = json.dumps(obj, sort_keys=True)
-        proc = subprocess.run(
-            [sys.executable, helper, "--log", log_path],
-            input=payload,
-            capture_output=True,
-            text=True
-        )
-        if proc.returncode != 0:
-            return
-    except Exception:
-        return
+
+    if os.path.isfile(helper):
+        try:
+            payload = json.dumps(obj, sort_keys=True)
+            proc = subprocess.run(
+                [sys.executable, helper, "--log", log_path],
+                input=payload,
+                capture_output=True,
+                text=True
+            )
+            if proc.returncode == 0:
+                return
+            print(f"APPEND_HELPER_FAIL: {(proc.stderr or '').strip()}", file=sys.stderr)
+        except Exception as exc:
+            print(f"APPEND_HELPER_EXCEPTION: {exc}", file=sys.stderr)
+    else:
+        print(f"APPEND_HELPER_MISSING: {helper}", file=sys.stderr)
+
+    _write_log_line(log_path, obj)
 def _write_log_line(path: str, obj: Dict[str, Any]) -> None:
     with open(path,"a",encoding="utf-8",newline="\n") as f: f.write(json.dumps(obj, sort_keys=True) + "\n")
 
