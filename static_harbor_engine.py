@@ -178,6 +178,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
                         except Exception: pass
                     if log_path:
                         append_event_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"tcp","bind":bind_host,"port":int(tcp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
+                        append_receipt_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"tcp","bind":bind_host,"port":int(tcp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
                 finally:
                     try: conn.close()
                     except Exception: pass
@@ -200,6 +201,7 @@ def cmd_listen(args: argparse.Namespace) -> int:
                     except Exception: pass
                 if log_path:
                     append_event_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"udp","bind":bind_host,"port":int(udp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
+                    append_receipt_via_helper(log_path, {"schema":"static_harbor.listen_event.v1","proto":"udp","bind":bind_host,"port":int(udp_port),"peer":f"{addr[0]}:{addr[1]}","rx_len":int(len(data)),"tx_len":int(len(resp) if args.echo else 0)})
         except KeyboardInterrupt:
             print("LISTEN_STOP: udp"); return 0
         finally:
@@ -353,3 +355,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     return int(fn(args) or 0)
 
 if __name__=="__main__": raise SystemExit(main())
+
+
+def append_receipt_via_helper(log_path: str, obj):
+    receipt_log = log_path + ".receipts.jsonl"
+    here = os.path.dirname(os.path.abspath(__file__))
+    helper = os.path.join(here, "scripts", "append_static_harbor_receipt_v1.py")
+
+    if os.path.isfile(helper):
+        try:
+            payload = json.dumps(obj, sort_keys=True)
+            subprocess.run(
+                [sys.executable, helper, "--log", receipt_log],
+                input=payload,
+                text=True,
+                capture_output=True
+            )
+        except:
+            pass
