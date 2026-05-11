@@ -12,6 +12,14 @@ function EnsureDir([string]$Path) {
   }
 }
 
+function SafeRemoveFile([string]$Path) {
+  try {
+    if(Test-Path -LiteralPath $Path -PathType Leaf) {
+      Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
+}
+
 function Find-Python {
   foreach($c in @("python","python3","py")) {
     $cmd = Get-Command $c -ErrorAction SilentlyContinue
@@ -46,20 +54,19 @@ $udpLog = Join-Path $proofDir "listen_udp_events.jsonl"
 $tcpReceipt = $tcpLog + ".receipts.jsonl"
 $udpReceipt = $udpLog + ".receipts.jsonl"
 
-foreach($p in @($tcpLog,$udpLog,$tcpReceipt,$udpReceipt)) {
-  if(Test-Path -LiteralPath $p -PathType Leaf) { Remove-Item -LiteralPath $p -Force }
+$tcpStdOut = Join-Path $proofDir "listen_tcp_stdout.log"
+$tcpStdErr = Join-Path $proofDir "listen_tcp_stderr.log"
+$udpStdOut = Join-Path $proofDir "listen_udp_stdout.log"
+$udpStdErr = Join-Path $proofDir "listen_udp_stderr.log"
+
+foreach($p in @($tcpLog,$udpLog,$tcpReceipt,$udpReceipt,$tcpStdOut,$tcpStdErr,$udpStdOut,$udpStdErr)) {
+  SafeRemoveFile $p
 }
 
 $tcpPort = Get-FreeTcpPort
 $udpPort = Get-FreeUdpPort
 
-# ---------------- TCP ----------------
 Write-Host ("LISTEN_SMOKE_START_TCP: 127.0.0.1:" + $tcpPort) -ForegroundColor Cyan
-
-$tcpStdOut = Join-Path $proofDir "listen_tcp_stdout.log"
-$tcpStdErr = Join-Path $proofDir "listen_tcp_stderr.log"
-if(Test-Path $tcpStdOut){ Remove-Item $tcpStdOut -Force }
-if(Test-Path $tcpStdErr){ Remove-Item $tcpStdErr -Force }
 
 $tcpProc = Start-Process -FilePath $py -ArgumentList @(
   $Engine, "listen",
@@ -75,9 +82,9 @@ Start-Sleep -Milliseconds 500
 $bound = Get-NetTCPConnection -State Listen -LocalAddress 127.0.0.1 -LocalPort $tcpPort -ErrorAction SilentlyContinue
 if(-not $bound) {
   Write-Host "=== TCP STDOUT ===" -ForegroundColor Yellow
-  if(Test-Path $tcpStdOut){ Get-Content $tcpStdOut | Out-Host }
+  if(Test-Path -LiteralPath $tcpStdOut){ Get-Content -LiteralPath $tcpStdOut | Out-Host }
   Write-Host "=== TCP STDERR ===" -ForegroundColor Red
-  if(Test-Path $tcpStdErr){ Get-Content $tcpStdErr | Out-Host }
+  if(Test-Path -LiteralPath $tcpStdErr){ Get-Content -LiteralPath $tcpStdErr | Out-Host }
   try { if(-not $tcpProc.HasExited){ $tcpProc.Kill() } } catch {}
   Die "TCP_LISTENER_DID_NOT_BIND"
 }
@@ -91,9 +98,7 @@ try {
   $buf = New-Object byte[] 1024
   $n = $tcpStream.Read($buf,0,$buf.Length)
   $body = [System.Text.Encoding]::ASCII.GetString($buf,0,$n)
-  if($body -notmatch "STATIC_HARBOR_ECHO_V1") {
-    Die ("TCP_ECHO_BAD: " + $body)
-  }
+  if($body -notmatch "STATIC_HARBOR_ECHO_V1") { Die ("TCP_ECHO_BAD: " + $body) }
 }
 finally {
   try { $tcpStream.Dispose() } catch {}
@@ -106,14 +111,9 @@ if(-not (Test-Path -LiteralPath $tcpLog -PathType Leaf)) { Die ("TCP_LOG_MISSING
 if(-not (Test-Path -LiteralPath $tcpReceipt -PathType Leaf)) { Die ("TCP_RECEIPT_LOG_MISSING: " + $tcpReceipt) }
 
 Write-Host "LISTEN_SMOKE_TCP_OK" -ForegroundColor Green
+try { if(-not $tcpProc.HasExited){ $tcpProc.Kill() } } catch {}
 
-# ---------------- UDP ----------------
 Write-Host ("LISTEN_SMOKE_START_UDP: 127.0.0.1:" + $udpPort) -ForegroundColor Cyan
-
-$udpStdOut = Join-Path $proofDir "listen_udp_stdout.log"
-$udpStdErr = Join-Path $proofDir "listen_udp_stderr.log"
-if(Test-Path $udpStdOut){ Remove-Item $udpStdOut -Force }
-if(Test-Path $udpStdErr){ Remove-Item $udpStdErr -Force }
 
 $udpProc = Start-Process -FilePath $py -ArgumentList @(
   $Engine, "listen",
@@ -124,22 +124,37 @@ $udpProc = Start-Process -FilePath $py -ArgumentList @(
   "--log",$udpLog
 ) -RedirectStandardOutput $udpStdOut -RedirectStandardError $udpStdErr -PassThru -WindowStyle Hidden
 
-Start-Sleep -Milliseconds 500
+Start-Sleep -Milliseconds 700
 
-$udpClient = New-Object System.Net.Sockets.UdpClient
+$udpSock = New-Object System.Net.Sockets.Socket(
+  [System.Net.Sockets.AddressFamily]::InterNetwork,
+  [System.Net.Sockets.SocketType]::Dgram,
+  [System.Net.Sockets.ProtocolType]::Udp
+)
+
 try {
-  $udpClient.Client.ReceiveTimeout = 2000
-  $data = [System.Text.Encoding]::ASCII.GetBytes("hello`n")
-  [void]$udpClient.Send($data,$data.Length,"127.0.0.1",$udpPort)
-  $remote = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any,0)
-  $resp = $udpClient.Receive([ref]$remote)
-  $body = [System.Text.Encoding]::ASCII.GetString($resp)
-  if($body -notmatch "STATIC_HARBOR_ECHO_V1") {
-    Die ("UDP_ECHO_BAD: " + $body)
-  }
+  $udpSock.ReceiveTimeout = 3000
+  $serverEp = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Parse("127.0.0.1"),$udpPort)
+  $payload = [System.Text.Encoding]::ASCII.GetBytes("hello`n")
+  [void]$udpSock.SendTo($payload,$serverEp)
+
+  $buf = New-Object byte[] 1024
+  $remoteEp = [System.Net.EndPoint](New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any,0))
+  $n = $udpSock.ReceiveFrom($buf,[ref]$remoteEp)
+  $body = [System.Text.Encoding]::ASCII.GetString($buf,0,$n)
+
+  if($body -notmatch "STATIC_HARBOR_ECHO_V1") { Die ("UDP_ECHO_BAD: " + $body) }
+}
+catch {
+  Write-Host "=== UDP STDOUT ===" -ForegroundColor Yellow
+  if(Test-Path -LiteralPath $udpStdOut){ Get-Content -LiteralPath $udpStdOut | Out-Host }
+  Write-Host "=== UDP STDERR ===" -ForegroundColor Red
+  if(Test-Path -LiteralPath $udpStdErr){ Get-Content -LiteralPath $udpStdErr | Out-Host }
+  try { if(-not $udpProc.HasExited){ $udpProc.Kill() } } catch {}
+  Die ("UDP_RECEIVE_FAIL: " + $_.Exception.Message)
 }
 finally {
-  $udpClient.Close()
+  $udpSock.Close()
 }
 
 Start-Sleep -Milliseconds 250
@@ -148,8 +163,6 @@ if(-not (Test-Path -LiteralPath $udpLog -PathType Leaf)) { Die ("UDP_LOG_MISSING
 if(-not (Test-Path -LiteralPath $udpReceipt -PathType Leaf)) { Die ("UDP_RECEIPT_LOG_MISSING: " + $udpReceipt) }
 
 Write-Host "LISTEN_SMOKE_UDP_OK" -ForegroundColor Green
-
-try { if(-not $tcpProc.HasExited){ $tcpProc.Kill() } } catch {}
 try { if(-not $udpProc.HasExited){ $udpProc.Kill() } } catch {}
 
 Write-Host "STATIC_HARBOR_LISTEN_SMOKE_OK" -ForegroundColor Green
