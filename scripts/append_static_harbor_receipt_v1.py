@@ -1,3 +1,4 @@
+import subprocess
 import sys, json, hashlib, os, datetime
 
 def sha256(s: str) -> str:
