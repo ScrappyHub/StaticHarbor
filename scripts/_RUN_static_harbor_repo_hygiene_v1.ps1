@@ -24,9 +24,9 @@ $required=@(
 "schemas\static_harbor.listen_event.v1.json",
 "schemas\static_harbor.http_listen_event.v1.json",
 "schemas\static_harbor.receipt_event.v1.json",
-"scripts_RUN_static_harbor_listen_smoke_v1.ps1",
-"scripts_RUN_static_harbor_http_listen_smoke_v1.ps1",
-"scripts_RUN_static_harbor_tier0_full_green_v1.ps1"
+"scripts\_RUN_static_harbor_listen_smoke_v1.ps1",
+"scripts\_RUN_static_harbor_http_listen_smoke_v1.ps1",
+"scripts\_RUN_static_harbor_tier0_full_green_v1.ps1"
 )
 
 foreach($rel in $required){
