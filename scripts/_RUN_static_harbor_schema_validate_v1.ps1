@@ -5,6 +5,10 @@ Set-StrictMode -Version Latest
 
 function Die([string]$m){ throw $m }
 
+function HasProp($obj,[string]$name){
+  return $null -ne ($obj.PSObject.Properties | Where-Object { $_.Name -eq $name } | Select-Object -First 1)
+}
+
 $RepoRoot=(Resolve-Path -LiteralPath $RepoRoot).Path
 $schemas=Join-Path $RepoRoot "schemas"
 
@@ -24,9 +28,9 @@ foreach($name in $required){
     Die ("SCHEMA_JSON_INVALID: " + $name + " :: " + $_.Exception.Message)
   }
 
-  if(-not $json.'$schema'){ Die ("SCHEMA_NO_DOLLAR_SCHEMA: " + $name) }
-  if(-not $json.title){ Die ("SCHEMA_NO_TITLE: " + $name) }
-  if(-not $json.type){ Die ("SCHEMA_NO_TYPE: " + $name) }
+  if(-not (HasProp $json '$schema')){ Die ("SCHEMA_NO_DOLLAR_SCHEMA: " + $name) }
+  if(-not (HasProp $json 'title')){ Die ("SCHEMA_NO_TITLE: " + $name) }
+  if(-not (HasProp $json 'type')){ Die ("SCHEMA_NO_TYPE: " + $name) }
 }
 
 Write-Host "STATIC_HARBOR_SCHEMA_VALIDATE_OK" -ForegroundColor Green
